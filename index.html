@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Cart — Vulnerable Demo (Client-side checks only)</title>
+  <title>Cart — Interactive</title>
   <style>
     *{box-sizing:border-box;margin:0;padding:0;font-family:Inter, "Poppins", sans-serif}
     body{background:#f6f7fb;color:#222;padding:18px;direction:rtl}
@@ -19,174 +19,114 @@
     .info.ok{background:#d1fae5;color:#065f46}
     .info.warn{background:#fff7cd;color:#7c5a00}
     .small{font-size:13px;color:#666;margin-top:8px;text-align:center}
-    footer{margin-top:18px;text-align:center;color:#888;font-size:13px}
+    .dev{margin-top:14px;background:#f3f4f6;padding:10px;border-radius:8px}
+    textarea{width:100%;height:120px;padding:8px;border-radius:6px;border:1px solid #ddd;font-family:monospace}
   </style>
 </head>
 <body>
   <div class="wrap">
-    <h1>عرض تجريبي: شراء — الثقة المبالغ فيها في تحققات جهة العميل</h1>
+    <h1>عربة التسوق — عرض تفاعلي</h1>
 
-    <table id="cart-table" aria-label="Cart table">
+    <table id="cart-table">
       <tr><th>المنتج</th><th>السعر</th></tr>
-      <!-- rows injected by JS -->
     </table>
 
     <p id="total" style="text-align:left;font-weight:600;margin-top:8px"></p>
 
     <div class="controls">
-      <button class="btn btn-red" id="clearBtn">مسح العربة</button>
-      <button class="btn btn-green" id="checkoutBtn">Checkout (Pay)</button>
+      <button class="btn btn-red" id="clearBtn">مسح العربة محلياً</button>
+      <button class="btn btn-green" id="checkoutBtn">Checkout (Demo)</button>
     </div>
 
     <div id="infoBox" class="info"></div>
 
-    <p class="small">POST target افتراضي: <strong id="postTarget">https://httpbin.org/post</strong> — غيّره إلى بروكسي Burp (مثلاً http://127.0.0.1:8080/post) لالتقاط الطلب.</p>
+    <div class="dev">
+      <h4>أدوات تفاعل سريعة</h4>
+      <p class="small">إذا التقطت الطلب في Burp وعدلت الحقول، استخدم إما: (أ) أرجع رد مخصص في Burp يحوي JSON مناسب، أو (ب) انسخ JSON من Burp ولصقه هنا ثم اضغط <strong>Apply pasted server response</strong>.</p>
+      <textarea id="pastedResp" placeholder='الصق هنا JSON معدّل (مثال: {"items":[{"name":"X","price":1.5}],"total":1.5})'></textarea>
+      <div style="margin-top:8px"><button class="btn" id="applyPasted">Apply pasted server response</button></div>
+    </div>
+
+    <p class="small">ملاحظة: إذا وصل المتصفح رد JSON من Burp (أو من endpoint) عند الضغط على Add at Shop، سيخزن تلقائياً في <code>localStorage.server_cart</code> ويُستخدم هنا عند التحميل.</p>
   </div>
 
-  <footer>© Vulnerable Demo — للتجربة والتعلّم فقط</footer>
-
   <script>
-    // ====== إعدادات ======
     const CART_KEY = 'cart';
-    const BALANCE_KEY = 'shop_balance_v1';
-    // غيّر هذا إلى بروكسي Burp أو endpoint الذي تريد اعتراضه
-    const POST_URL = 'https://httpbin.org/post';
-    document.getElementById('postTarget').textContent = POST_URL;
+    const SERVER_CART_KEY = 'server_cart';
 
-    // ====== مساعدة العرض ======
-    function showInfo(msg, ok = true){
+    function showInfo(msg, ok=true){
       const box = document.getElementById('infoBox');
       box.style.display = 'block';
       box.className = 'info ' + (ok ? 'ok' : 'warn');
       box.textContent = msg;
-      // يخفي تلقائياً بعد 6 ثوانٍ
       setTimeout(()=>{ box.style.display = 'none'; }, 6000);
     }
 
     function escapeHtml(s){ return String(s).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;'); }
 
-    // ====== localStorage helpers ======
-    function loadCart(){ return JSON.parse(localStorage.getItem(CART_KEY) || '[]'); }
-    function saveCart(c){ localStorage.setItem(CART_KEY, JSON.stringify(c)); }
-    function loadBalance(){ return Number(localStorage.getItem(BALANCE_KEY) || 0); }
-    function saveBalance(v){ localStorage.setItem(BALANCE_KEY, Number(v)); }
+    function loadCartLocal(){ return JSON.parse(localStorage.getItem(CART_KEY) || '[]'); }
+    function saveCartLocal(c){ localStorage.setItem(CART_KEY, JSON.stringify(c)); }
+    function loadServerCart(){ try{ return JSON.parse(localStorage.getItem(SERVER_CART_KEY) || 'null'); }catch(e){ return null; } }
+    function clearServerCart(){ localStorage.removeItem(SERVER_CART_KEY); }
 
-    // ====== initial demo data (only if cart empty) ======
-    if(!localStorage.getItem(CART_KEY)){
-      const demo = [
-        { name: 'Wireless Mouse', price: 12.99 },
-        { name: 'USB-C Cable', price: 6.5 },
-        { name: 'Notebook', price: 4.25 }
-      ];
-      saveCart(demo);
-    }
-    if(!localStorage.getItem(BALANCE_KEY)){
-      saveBalance(10.00); // رصيد مبدئي قليل ليظهر حالة "غير كافٍ"
-    }
-
-    // ====== render cart ======
-    const table = document.getElementById('cart-table');
-    function renderCart(){
-      // remove previous rows
+    function renderFromItems(items){
+      const table = document.getElementById('cart-table');
       table.querySelectorAll('tr.item-row').forEach(r=>r.remove());
-      const cart = loadCart();
       let total = 0;
-      cart.forEach(item=>{
+      (items || []).forEach(it=>{
         const tr = document.createElement('tr');
         tr.className = 'item-row';
-        tr.innerHTML = `<td>${escapeHtml(item.name)}</td><td>$${Number(item.price).toFixed(2)}</td>`;
+        tr.innerHTML = `<td>${escapeHtml(it.name)}</td><td>$${Number(it.price).toFixed(2)}</td>`;
         table.appendChild(tr);
-        total += Number(item.price);
+        total += Number(it.price || 0);
       });
       document.getElementById('total').textContent = `Total: $${total.toFixed(2)}`;
-      return total;
     }
 
-    // ====== Clear button ======
+    // عند التحميل: إذا وجد server_cart استخدمه، وإلا استخدم الـ local cart
+    function init(){
+      const serverCart = loadServerCart();
+      if(serverCart && (serverCart.items || serverCart.length)){
+        // serverCart قد يأتي في أشكال مختلفة — ندعم أكثر من شكل:
+        let items = null;
+        if(Array.isArray(serverCart)) items = serverCart;
+        else if(Array.isArray(serverCart.items)) items = serverCart.items;
+        else if(Array.isArray(serverCart.cart)) items = serverCart.cart;
+        else items = []; // fallback
+
+        renderFromItems(items);
+        // بعد العرض نمسح الـ server_cart حتى لا يظهر مجدداً بالتحميل التالي
+        clearServerCart();
+        showInfo('عرض نتائج الـ server (معدّلة عبر Burp أو endpoint).', true);
+      } else {
+        const local = loadCartLocal();
+        renderFromItems(local);
+        showInfo('عرض العربة المحلية (client-side).', true);
+      }
+    }
+
     document.getElementById('clearBtn').addEventListener('click', ()=>{
       localStorage.removeItem(CART_KEY);
-      showInfo('تم مسح العربة.', true);
-      renderCart();
+      showInfo('تم مسح العربة محلياً.', true);
+      renderFromItems([]);
     });
 
-    // ====== Checkout behavior (المطلوب) ======
-    document.getElementById('checkoutBtn').addEventListener('click', async () => {
-      const cart = loadCart();
-      if(!cart.length){ showInfo('العربة فارغة.', false); return; }
-
-      const total = cart.reduce((s,it) => s + Number(it.price || 0), 0);
-      const balance = loadBalance();
-
-      // نبني الـ payload ونرسله دائماً في الخلفية (حتى لو الرصيد غير كافٍ)
-      const payload = {
-        items: cart,
-        total: total,
-        claimedClientBalance: balance,
-        clientTimestamp: new Date().toISOString(),
-        note: 'client-side payment attempt (for testing interception)'
-      };
-
-      // نرسل POST عبر fetch بصيغة JSON (يمكن اعتراضه/تعديله عبر Burp)
+    // زر يطبّق JSON ملصوق يدوياً (من Burp بعد تحريره) ليظهر فوراً
+    document.getElementById('applyPasted').addEventListener('click', ()=>{
+      const txt = document.getElementById('pastedResp').value.trim();
+      if(!txt){ showInfo('الصق JSON ثم اضغط Apply.', false); return; }
       try {
-        // إرسال أولي: الهدف أن يمر الطلب على الشبكة ليعترضه Burp
-        navigator.sendBeacon ? navigator.sendBeacon(POST_URL, JSON.stringify(payload)) : null;
-      } catch(e){
-        // ignore; نحاول الفetch كاحتياط
+        const j = JSON.parse(txt);
+        // نخزن في server_cart ونعيد التحميل لعرضه بنفس المنطق
+        localStorage.setItem(SERVER_CART_KEY, JSON.stringify(j));
+        showInfo('تم تطبيق الرد المُلصق. إعادة تحميل الصفحة لعرض النتائج...', true);
+        setTimeout(()=>location.reload(), 800);
+      } catch (e) {
+        showInfo('JSON غير صالح — افحص التنسيق.', false);
       }
-
-      // أيضاً نرسل fetch ليظهر في تبويب Proxy إن لم تقبض sendBeacon
-      fetch(POST_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-        // لا ننتظر النتيجة هنا لأن النية فقط جعل الطلب يمرّ ويمكن تعديله في Burp
-      }).then(resp=>{
-        // قراءة خفيفة للرد (غير ضروري)
-        resp.text().catch(()=>{});
-      }).catch(err=>{
-        // فشل الإرسال ليس مشكلة هنا — الاستعمال للتجربة فقط
-        console.warn('background POST failed', err);
-      });
-
-      // الآن نُظهر سلوك الواجهة للمستخدم:
-      if(balance < total){
-        // نعرض رفض "طبيعي" — لا نخصم ولا نمسح العربة
-        showInfo(`رفض: رصيدك $${balance.toFixed(2)} أقل من مجموع العربة $${total.toFixed(2)}. (تم إرسال طلب للاختبار)`, false);
-        return;
-      }
-
-      // لو الرصيد كافٍ: نخصم محلياً ونمسح العربة ونرسل نسخة نهائية (client-side)
-      const remaining = Math.max(0, balance - total);
-      saveBalance(remaining);
-
-      const payloadAfter = Object.assign({}, payload, { remainingBalance: remaining, confirmedClientDeduct: true });
-      fetch(POST_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payloadAfter)
-      }).catch(()=>{});
-
-      localStorage.removeItem(CART_KEY);
-      renderCart();
-      showInfo(`تم إرسال طلب الدفع. تم خصم $${total.toFixed(2)} محلياً. رصيد متبقي (client): $${remaining.toFixed(2)}`, true);
     });
 
-    // ====== init ======
-    function init(){
-      renderCart();
-      const b = loadBalance();
-      if(isNaN(b) || b <= 0){
-        showInfo('رصيدك $0.00 — جرّب تعديل الرصيد من console أو الصفحة الرئيسية.', false);
-      } else {
-        showInfo(`رصيدك الحالي: $${b.toFixed(2)}`, true);
-      }
-    }
     init();
-
-    // ====== (اختياري) أدوات dev للسرعة — فقط للـ LAB ======
-    // افتح الـ Console وادخل setBalance(100) أو addToCart(...) لتجريب سريع
-    window.setBalance = (v) => { saveBalance(Number(v)); showInfo(`رصيد محدث: $${Number(v).toFixed(2)}`, true); };
-    window.addToCart = (name, price) => { const c = loadCart(); c.push({name, price}); saveCart(c); renderCart(); showInfo('أضيف عنصر للعربة.', true); };
   </script>
 </body>
 </html>
