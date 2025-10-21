@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Cart — Vulnerable Demo (Client-side checks only)</title>
+  <title>Cart — Burp-ready Vulnerable Demo</title>
   <style>
     *{box-sizing:border-box;margin:0;padding:0;font-family:Inter, "Poppins", sans-serif}
     body{background:#f6f7fb;color:#222;padding:18px;direction:rtl}
@@ -20,11 +20,12 @@
     .info.warn{background:#fff7cd;color:#7c5a00}
     .small{font-size:13px;color:#666;margin-top:8px;text-align:center}
     footer{margin-top:18px;text-align:center;color:#888;font-size:13px}
+    pre.debug{background:#0b1320;color:#cffafe;padding:10px;border-radius:8px;overflow:auto;font-size:12px}
   </style>
 </head>
 <body>
   <div class="wrap">
-    <h1>عرض تجريبي: شراء — الثقة المبالغ فيها في تحققات جهة العميل</h1>
+    <h1>عرض تجريبي (لـ Burp) — Checkout (لا يفتح تبويب)</h1>
 
     <table id="cart-table" aria-label="Cart table">
       <tr><th>المنتج</th><th>السعر</th></tr>
@@ -40,7 +41,15 @@
 
     <div id="infoBox" class="info"></div>
 
-    <p class="small">POST target افتراضي: <strong id="postTarget">https://httpbin.org/post</strong> — غيّره إلى بروكسي Burp (مثلاً http://127.0.0.1:8080/post) لالتقاط الطلب.</p>
+    <p class="small">POST target مضبوط لبروكسي Burp المحلي: <strong id="postTarget">http://127.0.0.1:8080/post</strong></p>
+
+    <p class="small">ملاحظة: عند رصيد غير كافٍ الواجهة تعرض رفض عادي (لا تخصم ولا تمسح العربة)، لكن الطلب يُرسل في الخلفية لتستطيع اعتراضه وتعديله في Burp.</p>
+
+    <h3 style="margin-top:14px">أدوات سريعة (Dev)</h3>
+    <pre class="debug" id="debugBox">Console helpers:
+- setBalance(x)   -> sets client balance
+- addToCart(name, price) -> adds item to cart
+- dumpLastPayload() -> shows last payload sent (client-side)</pre>
   </div>
 
   <footer>© Vulnerable Demo — للتجربة والتعلّم فقط</footer>
@@ -49,8 +58,8 @@
     // ====== إعدادات ======
     const CART_KEY = 'cart';
     const BALANCE_KEY = 'shop_balance_v1';
-    // غيّر هذا إلى بروكسي Burp أو endpoint الذي تريد اعتراضه
-    const POST_URL = 'https://httpbin.org/post';
+    // مضبوط على Burp local proxy (HTTP) — تأكد Burp يعمل على 127.0.0.1:8080
+    const POST_URL = 'http://127.0.0.1:8080/post';
     document.getElementById('postTarget').textContent = POST_URL;
 
     // ====== مساعدة العرض ======
@@ -59,8 +68,7 @@
       box.style.display = 'block';
       box.className = 'info ' + (ok ? 'ok' : 'warn');
       box.textContent = msg;
-      // يخفي تلقائياً بعد 6 ثوانٍ
-      setTimeout(()=>{ box.style.display = 'none'; }, 6000);
+      setTimeout(()=>{ box.style.display = 'none'; }, 7000);
     }
 
     function escapeHtml(s){ return String(s).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;'); }
@@ -70,6 +78,10 @@
     function saveCart(c){ localStorage.setItem(CART_KEY, JSON.stringify(c)); }
     function loadBalance(){ return Number(localStorage.getItem(BALANCE_KEY) || 0); }
     function saveBalance(v){ localStorage.setItem(BALANCE_KEY, Number(v)); }
+
+    // ====== keep last payload for debug visibility ======
+    let LAST_PAYLOAD = null;
+    window.dumpLastPayload = () => { console.log('LAST_PAYLOAD =', LAST_PAYLOAD); return LAST_PAYLOAD; };
 
     // ====== initial demo data (only if cart empty) ======
     if(!localStorage.getItem(CART_KEY)){
@@ -109,7 +121,7 @@
       renderCart();
     });
 
-    // ====== Checkout behavior (المطلوب) ======
+    // ====== Checkout behavior (Burp-ready) ======
     document.getElementById('checkoutBtn').addEventListener('click', async () => {
       const cart = loadCart();
       if(!cart.length){ showInfo('العربة فارغة.', false); return; }
@@ -117,49 +129,57 @@
       const total = cart.reduce((s,it) => s + Number(it.price || 0), 0);
       const balance = loadBalance();
 
-      // نبني الـ payload ونرسله دائماً في الخلفية (حتى لو الرصيد غير كافٍ)
+      // Payload دائماً يُبنى ويُرسل في الخلفية حتى لو الرصيد غير كافٍ
       const payload = {
         items: cart,
         total: total,
         claimedClientBalance: balance,
         clientTimestamp: new Date().toISOString(),
-        note: 'client-side payment attempt (for testing interception)'
+        note: 'client-side payment attempt (for interception)'
       };
 
-      // نرسل POST عبر fetch بصيغة JSON (يمكن اعتراضه/تعديله عبر Burp)
+      // خزّن نسخة للـ debug
+      LAST_PAYLOAD = JSON.parse(JSON.stringify(payload));
+
+      // أول محاولة: حاول استخدام navigator.sendBeacon (خفيف، يمر عبر الشبكة)
       try {
-        // إرسال أولي: الهدف أن يمر الطلب على الشبكة ليعترضه Burp
-        navigator.sendBeacon ? navigator.sendBeacon(POST_URL, JSON.stringify(payload)) : null;
+        if(navigator.sendBeacon){
+          // sendBeacon expects either FormData/Blob/USVString; نرسل stringified JSON
+          const ok = navigator.sendBeacon(POST_URL, JSON.stringify(payload));
+          // لا نركز على نتيجة ok — الهدف مرور الطلب لقناة الشبكة ليعترضه Burp
+        }
+      } catch(e){ /* ignore */ }
+
+      // ثانياً: نرسل fetch لتظهر في Proxy أيضاً
+      try {
+        fetch(POST_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+          // لا ننتظر الرد — الهدف أن يمر الطلب على الشبكة حتى يمكن تعديله في Burp
+        }).then(resp=>{
+          // قراءة الرد خفيفة فقط لعدم ترك الpromise دون معالجة
+          resp.text().catch(()=>{});
+        }).catch(err=>{
+          console.warn('background POST failed', err);
+        });
       } catch(e){
-        // ignore; نحاول الفetch كاحتياط
+        console.warn('fetch error', e);
       }
 
-      // أيضاً نرسل fetch ليظهر في تبويب Proxy إن لم تقبض sendBeacon
-      fetch(POST_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-        // لا ننتظر النتيجة هنا لأن النية فقط جعل الطلب يمرّ ويمكن تعديله في Burp
-      }).then(resp=>{
-        // قراءة خفيفة للرد (غير ضروري)
-        resp.text().catch(()=>{});
-      }).catch(err=>{
-        // فشل الإرسال ليس مشكلة هنا — الاستعمال للتجربة فقط
-        console.warn('background POST failed', err);
-      });
-
-      // الآن نُظهر سلوك الواجهة للمستخدم:
+      // الآن نعرض السلوك الظاهري على المستخدم:
       if(balance < total){
         // نعرض رفض "طبيعي" — لا نخصم ولا نمسح العربة
-        showInfo(`رفض: رصيدك $${balance.toFixed(2)} أقل من مجموع العربة $${total.toFixed(2)}. (تم إرسال طلب للاختبار)`, false);
+        showInfo(`رفض: رصيدك $${balance.toFixed(2)} أقل من مجموع العربة $${total.toFixed(2)}. (تم إرسال طلب للاختبار إلى ${POST_URL})`, false);
         return;
       }
 
-      // لو الرصيد كافٍ: نخصم محلياً ونمسح العربة ونرسل نسخة نهائية (client-side)
+      // لو الرصيد كافٍ: نخصم محلياً ونمسح العربة ونرسل نسخة نهائية
       const remaining = Math.max(0, balance - total);
       saveBalance(remaining);
 
       const payloadAfter = Object.assign({}, payload, { remainingBalance: remaining, confirmedClientDeduct: true });
+      // نرسل نسخة تأكيد نهائية أيضاً
       fetch(POST_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -183,8 +203,7 @@
     }
     init();
 
-    // ====== (اختياري) أدوات dev للسرعة — فقط للـ LAB ======
-    // افتح الـ Console وادخل setBalance(100) أو addToCart(...) لتجريب سريع
+    // ====== (اختياري) أدوات dev للسرعة ======
     window.setBalance = (v) => { saveBalance(Number(v)); showInfo(`رصيد محدث: $${Number(v).toFixed(2)}`, true); };
     window.addToCart = (name, price) => { const c = loadCart(); c.push({name, price}); saveCart(c); renderCart(); showInfo('أضيف عنصر للعربة.', true); };
   </script>
