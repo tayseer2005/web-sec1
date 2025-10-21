@@ -50,6 +50,13 @@
       margin-top: 15px;
     }
 
+    .controls {
+      display:flex;
+      justify-content:center;
+      gap:12px;
+      margin-top:18px;
+    }
+
     .btn {
       background: #e74c3c;
       color: white;
@@ -61,6 +68,21 @@
 
     .btn:hover { background: #c0392b; }
 
+    .btn-green {
+      background: #27ae60;
+    }
+    .btn-green:hover { background: #219150; }
+
+    .info {
+      max-width:700px;
+      margin: 12px auto;
+      padding:10px 16px;
+      background:#fff3cd;
+      color:#856404;
+      border-radius:8px;
+      display:none;
+    }
+
     footer {
       background-color: #2c3e50;
       color: white;
@@ -68,6 +90,8 @@
       padding: 15px;
       margin-top: 40px;
     }
+
+    .small { font-size: 14px; color:#666; margin-top:8px; text-align:center; }
   </style>
 </head>
 <body>
@@ -88,34 +112,128 @@
       </tr>
     </table>
     <p class="total" id="total"></p>
-    <div style="text-align:center; margin-top:20px;">
-      <button class="btn" onclick="clearCart()">Clear Cart</button>
+
+    <div class="controls">
+      <button class="btn" id="clearBtn">Clear Cart</button>
+      <button class="btn btn-green" id="checkoutBtn">Checkout (Pay)</button>
     </div>
+
+    <p class="small">Balance and payment are checked locally (stored in browser). You can intercept the POST with Burp.</p>
   </div>
+
+  <div class="info" id="infoBox"></div>
 
   <footer>
     <p>© 2025 Shop Store - All rights reserved</p>
   </footer>
 
   <script>
-    const cart = JSON.parse(localStorage.getItem("cart")) || [];
-    const table = document.getElementById("cart-table");
-    let total = 0;
+    // Keys must match what index.html used for balance and cart
+    const CART_KEY = 'cart';
+    const BALANCE_KEY = 'shop_balance_v1';
+    const POST_URL = 'https://tayseer2005.github.io/web-sec1/'; // POST target (interceptable)
 
-    cart.forEach(item => {
-      const row = document.createElement("tr");
-      row.innerHTML = `<td>${item.name}</td><td>$${item.price}</td>`;
-      table.appendChild(row);
-      total += item.price;
+    function showInfo(msg, ok=true){
+      const box = document.getElementById('infoBox');
+      box.style.display = 'block';
+      box.style.background = ok ? '#d4edda' : '#fff3cd';
+      box.style.color = ok ? '#155724' : '#856404';
+      box.textContent = msg;
+      setTimeout(()=>{ box.style.display = 'none'; }, 6000);
+    }
+
+    function loadCart(){ return JSON.parse(localStorage.getItem(CART_KEY) || '[]'); }
+    function saveCart(c){ localStorage.setItem(CART_KEY, JSON.stringify(c)); }
+
+    function loadBalance(){ return Number(localStorage.getItem(BALANCE_KEY) || 0); }
+    function saveBalance(v){ localStorage.setItem(BALANCE_KEY, Number(v)); }
+
+    // Render cart and total
+    const table = document.getElementById('cart-table');
+    function renderCart(){
+      // remove existing rows except header
+      table.querySelectorAll('tr.item-row').forEach(r => r.remove());
+      const cart = loadCart();
+      let total = 0;
+      cart.forEach(item => {
+        const row = document.createElement('tr');
+        row.className = 'item-row';
+        // keep same display format as before
+        row.innerHTML = `<td>${escapeHtml(item.name)}</td><td>$${Number(item.price).toFixed(2)}</td>`;
+        table.appendChild(row);
+        total += Number(item.price);
+      });
+      document.getElementById('total').textContent = `Total: $${total.toFixed(2)}`;
+      return total;
+    }
+
+    function escapeHtml(s){ return String(s).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;'); }
+
+    // Clear cart
+    document.getElementById('clearBtn').addEventListener('click', () => {
+      localStorage.removeItem(CART_KEY);
+      showInfo('Cart cleared.', true);
+      renderCart();
     });
 
-    document.getElementById("total").textContent = `Total: $${total}`;
+    // Checkout: verify balance, deduct, POST data, clear cart on success
+    document.getElementById('checkoutBtn').addEventListener('click', async () => {
+      const cart = loadCart();
+      if (!cart.length) { showInfo('Cart is empty.', false); return; }
 
-    function clearCart() {
-      localStorage.removeItem("cart");
-      alert("Cart cleared!");
-      location.reload();
+      const total = cart.reduce((s,it) => s + Number(it.price || 0), 0);
+      const balance = loadBalance();
+
+      if (balance < total) {
+        showInfo(`Insufficient balance. Your balance: $${balance.toFixed(2)} — Cart total: $${total.toFixed(2)}`, false);
+        return;
+      }
+
+      // deduct locally
+      const remaining = (balance - total);
+      saveBalance(remaining);
+
+      // prepare payload (includes items and totals) — can be intercepted in Burp
+      const payload = {
+        items: cart,
+        total: total,
+        remainingBalance: remaining
+      };
+
+      try {
+        // send POST (fire-and-forget style), endpoint may not accept POST but Burp will capture it
+        const res = await fetch(POST_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+
+        // show server response if possible (many static sites return error; we still treat as success)
+        let text = '';
+        try { text = await res.text(); } catch(_) { text = '(no response text)'; }
+
+        // success: clear cart and update UI
+        localStorage.removeItem(CART_KEY);
+        renderCart();
+        showInfo(`Payment successful. $${total.toFixed(2)} deducted. Remaining balance: $${remaining.toFixed(2)}. Server response: ${text}`, true);
+      } catch (err) {
+        // network errors (or CORS) — still we deducted locally; inform user
+        showInfo(`Payment request failed to send, but local balance was updated. Remaining: $${remaining.toFixed(2)}. Error: ${err}`, false);
+      }
+    });
+
+    // init render + display balance in info area
+    function init(){
+      renderCart();
+      const b = loadBalance();
+      if (isNaN(b) || b <= 0) {
+        showInfo('Your balance is $0.00 — top up on homepage before checkout.', false);
+      } else {
+        showInfo(`Your balance: $${b.toFixed(2)}`, true);
+      }
     }
+
+    init();
   </script>
 </body>
 </html>
