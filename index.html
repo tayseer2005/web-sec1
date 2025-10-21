@@ -1,105 +1,34 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ar">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Your Cart</title>
+  <title>Your Cart (Vulnerable Demo)</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; font-family: "Poppins", sans-serif; }
-    body { background: #f8f9fa; color: #333; }
-
-    header {
-      background-color: #2c3e50;
-      color: white;
-      padding: 15px 30px;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-    }
-
-    header h1 { font-size: 24px; }
+    body { background: #f8f9fa; color: #333; direction: rtl; }
+    header { background-color: #2c3e50; color: white; padding: 15px 30px; display: flex; justify-content: space-between; align-items: center; }
+    header h1 { font-size: 22px; }
     nav a { color: white; text-decoration: none; margin: 0 10px; font-weight: bold; }
-    nav a:hover { text-decoration: underline; }
-
-    .cart {
-      max-width: 700px;
-      margin: 40px auto;
-      background: white;
-      border-radius: 12px;
-      padding: 20px;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-    }
-
-    h2 { margin-bottom: 20px; text-align: center; }
-
-    table {
-      width: 100%;
-      border-collapse: collapse;
-    }
-
-    th, td {
-      padding: 10px;
-      border-bottom: 1px solid #ddd;
-      text-align: left;
-    }
-
-    .total {
-      text-align: right;
-      font-size: 18px;
-      font-weight: bold;
-      margin-top: 15px;
-    }
-
-    .controls {
-      display:flex;
-      justify-content:center;
-      gap:12px;
-      margin-top:18px;
-    }
-
-    .btn {
-      background: #e74c3c;
-      color: white;
-      border: none;
-      padding: 8px 15px;
-      border-radius: 8px;
-      cursor: pointer;
-    }
-
+    .cart { max-width: 700px; margin: 40px auto; background: white; border-radius: 12px; padding: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+    table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+    th, td { padding: 10px; border-bottom: 1px solid #ddd; text-align: right; }
+    .total { text-align: left; font-size: 18px; font-weight: bold; margin-top: 15px; }
+    .controls { display:flex; justify-content:center; gap:12px; margin-top:18px; }
+    .btn { background: #e74c3c; color: white; border: none; padding: 8px 15px; border-radius: 8px; cursor: pointer; }
     .btn:hover { background: #c0392b; }
-
-    .btn-green {
-      background: #27ae60;
-    }
-    .btn-green:hover { background: #219150; }
-
-    .info {
-      max-width:700px;
-      margin: 12px auto;
-      padding:10px 16px;
-      background:#fff3cd;
-      color:#856404;
-      border-radius:8px;
-      display:none;
-    }
-
-    footer {
-      background-color: #2c3e50;
-      color: white;
-      text-align: center;
-      padding: 15px;
-      margin-top: 40px;
-    }
-
+    .btn-green { background: #27ae60; }
+    .info { max-width:700px; margin: 12px auto; padding:10px 16px; background:#fff3cd; color:#856404; border-radius:8px; display:none; }
+    footer { background-color: #2c3e50; color: white; text-align: center; padding: 15px; margin-top: 40px; }
     .small { font-size: 14px; color:#666; margin-top:8px; text-align:center; }
   </style>
 </head>
 <body>
   <header>
-    <h1>Your Cart</h1>
+    <h1>عربة التسوق — عرض تجريبي للثغرة</h1>
     <nav>
-      <a href="index.html">Home</a>
-      <a href="cart.html">Cart</a>
+      <a href="index.html">الرئيسية</a>
+      <a href="cart.html">العربة</a>
     </nav>
   </header>
 
@@ -107,32 +36,31 @@
     <h2>Shopping Cart</h2>
     <table id="cart-table">
       <tr>
-        <th>Product</th>
-        <th>Price</th>
+        <th>المنتج</th>
+        <th>السعر</th>
       </tr>
     </table>
     <p class="total" id="total"></p>
 
     <div class="controls">
-      <button class="btn" id="clearBtn">Clear Cart</button>
+      <button class="btn" id="clearBtn">مسح العربة</button>
       <button class="btn btn-green" id="checkoutBtn">Checkout (Pay)</button>
     </div>
 
-    <p class="small">This temporary POST target is <strong>httpbin.org/post</strong>. Use Burp to intercept the outgoing request.</p>
+    <p class="small">POST target المؤقت هو <strong>https://httpbin.org/post</strong> — اعمل Burp intercept لمشاهدة الطلب.</p>
   </div>
 
   <div class="info" id="infoBox"></div>
 
   <footer>
-    <p>© 2025 Shop Store - All rights reserved</p>
+    <p>© 2025 Shop Store - Vulnerable Demo</p>
   </footer>
 
   <script>
-    // Keys must match what index.html used for balance and cart
+    // Keys same as your original
     const CART_KEY = 'cart';
     const BALANCE_KEY = 'shop_balance_v1';
-    // TEMPORARY POST TARGET that accepts POSTs and echoes them back
-    const POST_URL = 'https://httpbin.org/post';
+    const POST_URL = 'https://httpbin.org/post'; // يمكنك تغييره إلى سيرفرك أو proxy الخاص بك
 
     function showInfo(msg, ok=true){
       const box = document.getElementById('infoBox');
@@ -140,19 +68,18 @@
       box.style.background = ok ? '#d4edda' : '#fff3cd';
       box.style.color = ok ? '#155724' : '#856404';
       box.textContent = msg;
-      setTimeout(()=>{ box.style.display = 'none'; }, 6000);
+      setTimeout(()=>{ box.style.display = 'none'; }, 7000);
     }
 
     function loadCart(){ return JSON.parse(localStorage.getItem(CART_KEY) || '[]'); }
     function saveCart(c){ localStorage.setItem(CART_KEY, JSON.stringify(c)); }
-
     function loadBalance(){ return Number(localStorage.getItem(BALANCE_KEY) || 0); }
     function saveBalance(v){ localStorage.setItem(BALANCE_KEY, Number(v)); }
 
-    // Render cart and total
     const table = document.getElementById('cart-table');
+    function escapeHtml(s){ return String(s).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;'); }
+
     function renderCart(){
-      // remove existing rows except header
       table.querySelectorAll('tr.item-row').forEach(r => r.remove());
       const cart = loadCart();
       let total = 0;
@@ -167,16 +94,14 @@
       return total;
     }
 
-    function escapeHtml(s){ return String(s).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;'); }
-
-    // Clear cart
     document.getElementById('clearBtn').addEventListener('click', () => {
       localStorage.removeItem(CART_KEY);
       showInfo('Cart cleared.', true);
       renderCart();
     });
 
-    // Checkout: verify balance, deduct, then send POST via hidden form (so Burp captures it)
+    // IMPORTANT: في هذه النسخة سنرسل الـ POST حتى لو الرصيد غير كافٍ
+    // هذا لعرض ثغرة الثقة الزائدة في الفحص على جهة العميل فقط.
     document.getElementById('checkoutBtn').addEventListener('click', () => {
       const cart = loadCart();
       if (!cart.length) { showInfo('Cart is empty.', false); return; }
@@ -184,28 +109,31 @@
       const total = cart.reduce((s,it) => s + Number(it.price || 0), 0);
       const balance = loadBalance();
 
+      // نعرض تحذير لو الرصيد غير كافٍ - لكن نُكمل الإرسال على أي حال (لعمل الـ LAB)
       if (balance < total) {
-        showInfo(`Insufficient balance. Your balance: $${balance.toFixed(2)} — Cart total: $${total.toFixed(2)}`, false);
-        return;
+        showInfo(`تحذير: رصيدك $${balance.toFixed(2)} غير كافٍ لمجموع العربة $${total.toFixed(2)} — سيتم إرسال طلب الدفع للعرض فقط.`, false);
+      } else {
+        showInfo(`سيتم إرسال طلب الدفع. رصيدك: $${balance.toFixed(2)} — إجمالي: $${total.toFixed(2)}`, true);
       }
 
-      // deduct locally
-      const remaining = (balance - total);
+      // نقص الرصيد محلياً (client-side) إن وُجد — لإظهار أن كل شيء يحدث على المتصفح فقط
+      const remaining = Math.max(0, balance - total);
       saveBalance(remaining);
 
-      // prepare payload
       const payload = {
         items: cart,
         total: total,
-        remainingBalance: remaining
+        remainingBalance: remaining,
+        // نضيف حقل يوضح أنّ هذا الطلب مرّرَ من جهة العميل (vulnerable demo)
+        clientOnlyCheck: true,
+        timestamp: new Date().toISOString()
       };
 
+      // بناء نموذج مخفي وإرساله ليظهر في Burp
       try {
-        // Build a hidden form and POST (this will be intercepted by Burp)
         const form = document.createElement('form');
         form.method = 'POST';
         form.action = POST_URL;
-        // Open in new tab so current page remains (and we can clear cart)
         form.target = '_blank';
 
         const input = document.createElement('input');
@@ -214,26 +142,34 @@
         input.value = JSON.stringify(payload);
         form.appendChild(input);
 
+        // نضيف حقل يوضح إن التحقق لم يتم على الخادم (لغرض التوضيح فقط)
+        const infoInput = document.createElement('input');
+        infoInput.type = 'hidden';
+        infoInput.name = 'note';
+        infoInput.value = 'This request demonstrates excessive trust in client-side controls.';
+        form.appendChild(infoInput);
+
         document.body.appendChild(form);
         form.submit();
 
-        // consider it sent: clear cart locally and update UI
+        // نعتبر الطلب أُرسل: نمسح العربة محلياً
         localStorage.removeItem(CART_KEY);
         renderCart();
-        showInfo(`Payment request sent (form POST). $${total.toFixed(2)} deducted. Remaining balance: $${remaining.toFixed(2)}`, true);
+        // عرض رسالة قصيرة توضح أنه أُرسل
+        showInfo(`Payment request (vulnerable demo) sent. $${total.toFixed(2)} attempted. Remaining (client): $${remaining.toFixed(2)}`, true);
       } catch (err) {
         showInfo(`Failed to send POST via form. Error: ${err}`, false);
       }
     });
 
-    // init render + display balance warning
+    // init
     function init(){
       renderCart();
       const b = loadBalance();
       if (isNaN(b) || b <= 0) {
-        showInfo('Your balance is $0.00 — top up on homepage before checkout.', false);
+        showInfo('رصيدك $0.00 — ضع رصيد على الصفحة الرئيسية لتجربة الدفع.', false);
       } else {
-        showInfo(`Your balance: $${b.toFixed(2)}`, true);
+        showInfo(`رصيدك: $${b.toFixed(2)}`, true);
       }
     }
 
