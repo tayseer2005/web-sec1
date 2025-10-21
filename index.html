@@ -131,7 +131,8 @@
     // Keys must match what index.html used for balance and cart
     const CART_KEY = 'cart';
     const BALANCE_KEY = 'shop_balance_v1';
-    const POST_URL = 'https://tayseer2005.github.io/web-sec1/'; // POST target (interceptable)
+    // Post target (interceptable). Change if you need a different endpoint.
+    const POST_URL = 'https://tayseer2005.github.io/web-sec1/';
 
     function showInfo(msg, ok=true){
       const box = document.getElementById('infoBox');
@@ -158,7 +159,6 @@
       cart.forEach(item => {
         const row = document.createElement('tr');
         row.className = 'item-row';
-        // keep same display format as before
         row.innerHTML = `<td>${escapeHtml(item.name)}</td><td>$${Number(item.price).toFixed(2)}</td>`;
         table.appendChild(row);
         total += Number(item.price);
@@ -176,8 +176,8 @@
       renderCart();
     });
 
-    // Checkout: verify balance, deduct, POST data, clear cart on success
-    document.getElementById('checkoutBtn').addEventListener('click', async () => {
+    // Checkout: verify balance, deduct, then send POST via hidden form (so Burp captures it)
+    document.getElementById('checkoutBtn').addEventListener('click', () => {
       const cart = loadCart();
       if (!cart.length) { showInfo('Cart is empty.', false); return; }
 
@@ -193,7 +193,7 @@
       const remaining = (balance - total);
       saveBalance(remaining);
 
-      // prepare payload (includes items and totals) — can be intercepted in Burp
+      // prepare payload
       const payload = {
         items: cart,
         total: total,
@@ -201,28 +201,32 @@
       };
 
       try {
-        // send POST (fire-and-forget style), endpoint may not accept POST but Burp will capture it
-        const res = await fetch(POST_URL, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        });
+        // Build a hidden form and POST (this will be intercepted by Burp)
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.action = POST_URL;
+        // Open in new tab so current page remains (and we can clear cart)
+        form.target = '_blank';
 
-        // show server response if possible (many static sites return error; we still treat as success)
-        let text = '';
-        try { text = await res.text(); } catch(_) { text = '(no response text)'; }
+        const input = document.createElement('input');
+        input.type = 'hidden';
+        input.name = 'payload';
+        input.value = JSON.stringify(payload);
+        form.appendChild(input);
 
-        // success: clear cart and update UI
+        document.body.appendChild(form);
+        form.submit();
+
+        // consider it sent: clear cart locally and update UI
         localStorage.removeItem(CART_KEY);
         renderCart();
-        showInfo(`Payment successful. $${total.toFixed(2)} deducted. Remaining balance: $${remaining.toFixed(2)}. Server response: ${text}`, true);
+        showInfo(`Payment request sent (form POST). $${total.toFixed(2)} deducted. Remaining balance: $${remaining.toFixed(2)}`, true);
       } catch (err) {
-        // network errors (or CORS) — still we deducted locally; inform user
-        showInfo(`Payment request failed to send, but local balance was updated. Remaining: $${remaining.toFixed(2)}. Error: ${err}`, false);
+        showInfo(`Failed to send POST via form. Error: ${err}`, false);
       }
     });
 
-    // init render + display balance in info area
+    // init render + display balance warning
     function init(){
       renderCart();
       const b = loadBalance();
